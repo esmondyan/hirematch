@@ -26,7 +26,7 @@ services:
       - "8000"
     volumes:
       - ./uploads:/app/uploads
-      - ./hirematch.db:/app/hirematch.db
+      - ./data:/app/data
     env_file:
       - .env
     restart: unless-stopped

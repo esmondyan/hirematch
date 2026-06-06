@@ -4,6 +4,8 @@ __pycache__/
 *.db
 uploads/*
 !uploads/.gitkeep
+data/*
+!data/.gitkeep
 .venv/
 venv/
 dist/

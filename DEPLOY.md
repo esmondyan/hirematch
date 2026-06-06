@@ -53,6 +53,7 @@ nano .env   # 填入真实 API Key（必填项见下方）
 ```ini
 LLM_PROVIDER=deepseek
 DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxx
+DATABASE_URL=sqlite:///./data/hirematch.db
 ```
 
 ```bash
@@ -163,7 +164,7 @@ DASHSCOPE_API_KEY=                          # 使用 Qwen 时填写
 OPENAI_API_KEY=                             # 使用 OpenAI 时填写
 MATCH_THRESHOLD=60                          # 匹配阈值，低于此分自动拒绝
 MAX_UPLOAD_SIZE_MB=5                        # 上传文件大小限制
-DATABASE_URL=sqlite:///./hirematch.db       # 数据库路径，默认即可
+DATABASE_URL=sqlite:///./data/hirematch.db   # 数据库路径，默认即可
 ```
 
 ---
@@ -189,7 +190,7 @@ docker compose -f docker-compose.prod.yml down
 ### 备份数据
 ```bash
 # 数据库和上传文件都在 /opt/hirematch 目录下
-tar -czf backup-$(date +%Y%m%d-%H%M).tar.gz hirematch.db uploads/
+tar -czf backup-$(date +%Y%m%d-%H%M).tar.gz data/ uploads/
 ```
 
 ### 恢复数据
@@ -220,5 +221,5 @@ docker compose -f docker-compose.prod.yml restart
 4. **系统更新**：`apt update && apt upgrade -y` 定期执行
 5. **备份**：设置 cron 定期备份数据库
    ```
-   0 3 * * * cd /opt/hirematch && tar -czf backup-$(date +\%Y\%m\%d).tar.gz hirematch.db uploads/
+   0 3 * * * cd /opt/hirematch && tar -czf backup-$(date +\%Y\%m\%d).tar.gz data/ uploads/
    ```

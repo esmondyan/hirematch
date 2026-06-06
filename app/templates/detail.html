@@ -18,20 +18,39 @@
         </div>
     </div>
 
-    <!-- Original Resume -->
+    <!-- Resume Viewer (collapsible, summary-is-tabs) -->
     <div class="card raw-docs-card">
-        <details class="raw-doc-details">
-            <summary class="raw-doc-summary">
-                <span>查看原始简历</span>
-                <span style="display:flex;gap:6px;">
-                    {% if candidate.resume_file_path %}
-                    <a href="/candidates/{{ candidate.id }}/download" class="btn btn-outline btn-sm" title="下载原始简历文件">下载原始文件</a>
-                    {% endif %}
-                    <button class="btn btn-outline btn-sm btn-reanalyze-inline" id="btn-reanalyze" onclick="reanalyzeOne(event)">重新分析此简历</button>
-                </span>
-            </summary>
+        <div class="raw-doc-summary" id="resume-summary-bar">
+            <span class="resume-tab-label active" data-tab="extracted" onclick="switchResumeTab('extracted', this)">提取简历</span>
+            {% if candidate.resume_file_path %}
+            <span class="resume-tab-label" data-tab="original" onclick="switchResumeTab('original', this)">原始文件</span>
+            {% endif %}
+            <span class="resume-summary-actions">
+                <button class="btn btn-outline btn-sm btn-reanalyze-inline" id="btn-reanalyze" onclick="reanalyzeOne(event)">重新分析此简历</button>
+            </span>
+        </div>
+        <div class="resume-tab-panel" id="tab-extracted" style="display:none">
             <div class="raw-doc-rendered">{{ resume_html | safe }}</div>
-        </details>
+        </div>
+        {% if candidate.resume_file_path %}
+        <div class="resume-tab-panel" id="tab-original" style="display:none">
+            {% set ext = candidate.filename.split('.')[-1].lower() if '.' in candidate.filename else '' %}
+            {% if ext == 'pdf' %}
+            <iframe src="/candidates/{{ candidate.id }}/download?view=true"
+                    class="resume-pdf-viewer" title="原始PDF简历"></iframe>
+            {% elif ext in ('docx', 'doc') %}
+            <div class="resume-fallback">
+                <p>无法直接预览 Word 文档，请下载后查看。</p>
+                <a href="/candidates/{{ candidate.id }}/download" class="btn btn-outline btn-sm">下载原文件 ({{ candidate.filename }})</a>
+            </div>
+            {% else %}
+            <div class="resume-fallback">
+                <p>文件格式不支持在线预览。</p>
+                <a href="/candidates/{{ candidate.id }}/download" class="btn btn-outline btn-sm">下载原文件 ({{ candidate.filename }})</a>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
     </div>
 
     {% if candidate.status == "failed" %}
@@ -993,5 +1012,31 @@ async function reanalyzeOne(e) {
     }, 3000);
 })();
 {% endif %}
+
+// Resume tab switching (also toggles expand/collapse)
+function switchResumeTab(tab, el) {
+    const labels = document.querySelectorAll('.resume-tab-label');
+    const panels = document.querySelectorAll('.resume-tab-panel');
+    const targetPanel = document.getElementById('tab-' + tab);
+
+    // If clicking the already-active label, toggle expand/collapse
+    if (el.classList.contains('active')) {
+        if (targetPanel && targetPanel.style.display !== 'none') {
+            // Collapse: hide panel, deactivate label
+            targetPanel.style.display = 'none';
+            el.classList.remove('active');
+        } else {
+            // Expand: show panel
+            if (targetPanel) targetPanel.style.display = 'block';
+        }
+        return;
+    }
+
+    // Switch to a different tab
+    labels.forEach(l => l.classList.remove('active'));
+    el.classList.add('active');
+    panels.forEach(p => p.style.display = 'none');
+    if (targetPanel) targetPanel.style.display = 'block';
+}
 </script>
 {% endblock %}

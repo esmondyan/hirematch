@@ -7,11 +7,16 @@ from app.models.schemas import JobCreate, JobResponse
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
+def _get_org(request: Request) -> str:
+    return request.scope.get("org_name", "")
+
+
 @router.post("/", response_model=JobResponse)
-async def create_job_api(data: JobCreate):
+async def create_job_api(data: JobCreate, request: Request):
+    org_name = _get_org(request)
     session = get_session()
     try:
-        job = Job(title=data.title, description=data.description, threshold=data.threshold)
+        job = Job(title=data.title, description=data.description, threshold=data.threshold, org_name=org_name)
         session.add(job)
         session.commit()
         session.refresh(job)
@@ -27,9 +32,10 @@ async def create_job_form(
     description: str = Form(...),
     threshold: int = Form(60),
 ):
+    org_name = _get_org(request)
     session = get_session()
     try:
-        job = Job(title=title, description=description, threshold=threshold)
+        job = Job(title=title, description=description, threshold=threshold, org_name=org_name)
         session.add(job)
         session.commit()
         session.refresh(job)
@@ -39,11 +45,12 @@ async def create_job_form(
 
 
 @router.get("/{job_id}", response_model=JobResponse)
-async def get_job(job_id: int):
+async def get_job(job_id: int, request: Request):
+    org_name = _get_org(request)
     session = get_session()
     try:
         job = session.get(Job, job_id)
-        if not job:
+        if not job or job.org_name != org_name:
             raise HTTPException(status_code=404, detail="JD 不存在")
         return job
     finally:
@@ -51,11 +58,12 @@ async def get_job(job_id: int):
 
 
 @router.put("/{job_id}")
-async def update_job(job_id: int, data: dict):
+async def update_job(job_id: int, data: dict, request: Request):
+    org_name = _get_org(request)
     session = get_session()
     try:
         job = session.get(Job, job_id)
-        if not job:
+        if not job or job.org_name != org_name:
             raise HTTPException(status_code=404, detail="JD 不存在")
 
         if "title" in data:
@@ -72,16 +80,16 @@ async def update_job(job_id: int, data: dict):
 
 
 @router.post("/{job_id}/reanalyze-all")
-async def reanalyze_all(job_id: int):
+async def reanalyze_all(job_id: int, request: Request):
     import asyncio
+    org_name = _get_org(request)
     session = get_session()
     try:
         job = session.get(Job, job_id)
-        if not job:
+        if not job or job.org_name != org_name:
             raise HTTPException(status_code=404, detail="JD 不存在")
 
         # Set all non-processing candidates to processing status immediately
-        # so the UI shows spinners right away
         candidate_ids = []
         for c in job.candidates:
             if c.status not in ("pending", "processing"):
@@ -109,12 +117,13 @@ async def reanalyze_all(job_id: int):
 
 
 @router.delete("/{job_id}")
-async def delete_job(job_id: int):
+async def delete_job(job_id: int, request: Request):
     import os, shutil
+    org_name = _get_org(request)
     session = get_session()
     try:
         job = session.get(Job, job_id)
-        if not job:
+        if not job or job.org_name != org_name:
             raise HTTPException(status_code=404, detail="JD 不存在")
 
         # Clean up voice files for all candidates

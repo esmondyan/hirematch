@@ -345,24 +345,22 @@ async function reanalyzeAll() {
     finally { btn.disabled = false; btn.textContent = '重新分析全部 ({{ total }} 份)'; }
 }
 
-// Auto-refresh if there are pending candidates
+// Auto-refresh while there are pending/processing candidates
 {% if pending %}
 (function() {
-    const check = () => {
+    let count = 0;
+    const interval = setInterval(() => {
         fetch('/results/{{ job.id }}?_r=' + Date.now(), {headers: {'Accept':'text/html'}})
             .then(r => r.text())
             .then(html => {
-                if (!html.includes('处理中')) {
+                const hasPending = html.includes('等待处理') || html.includes('处理中...');
+                if (!hasPending) {
                     location.reload();
                 }
             });
-    };
-    let count = 0;
-    const interval = setInterval(() => {
-        check();
         count++;
-        if (count > 60) clearInterval(interval);
-    }, 5000);
+        if (count > 120) clearInterval(interval); // max 10 min
+    }, 3000);
 })();
 {% endif %}
 </script>

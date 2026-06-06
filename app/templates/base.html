@@ -7,13 +7,30 @@
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <header class="app-header">
+    <header class="app-header" id="app-header">
         <div class="header-content">
             <a href="/" class="logo">
-                <span class="logo-icon">HM</span>
+                <svg class="logo-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Left column -->
+                    <rect x="6" y="4" width="13" height="40" rx="6" fill="currentColor" opacity="0.9"/>
+                    <!-- Right column -->
+                    <rect x="29" y="4" width="13" height="40" rx="6" fill="currentColor" opacity="0.9"/>
+                    <!-- Top bridge -->
+                    <rect x="6" y="4" width="36" height="5" rx="2.5" fill="currentColor"/>
+                    <!-- Bottom bridge -->
+                    <rect x="6" y="39" width="36" height="5" rx="2.5" fill="currentColor"/>
+                    <!-- Center checkmark -->
+                    <path d="M17 24 L22 29 L32 18" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
                 <span class="logo-text">HireMatch</span>
             </a>
             <span class="header-subtitle">智能面试初筛助手</span>
+            <span class="header-right">
+                {% if org_name %}
+                <span class="header-org-label">{{ org_name }} · {{ username }}</span>
+                <a href="/logout" class="header-logout-link" title="退出登录">退出</a>
+                {% endif %}
+            </span>
         </div>
     </header>
 
@@ -22,5 +39,29 @@
     </main>
 
     {% block scripts %}{% endblock %}
+
+    <script>
+    // Scroll shrink behavior with hysteresis to prevent jitter
+    (function() {
+        const header = document.getElementById('app-header');
+        if (!header || window.innerWidth <= 480) return; // always small on mobile
+        const SHRINK_AT = 60;   // shrink when scrolling past this
+        const EXPAND_AT = 20;   // only expand when scrolling back above this (hysteresis)
+        let isShrunk = false;
+
+        function onScroll() {
+            const scrollY = window.scrollY;
+            if (!isShrunk && scrollY > SHRINK_AT) {
+                isShrunk = true;
+                header.classList.add('header-shrunk');
+            } else if (isShrunk && scrollY < EXPAND_AT) {
+                isShrunk = false;
+                header.classList.remove('header-shrunk');
+            }
+        }
+
+        window.addEventListener('scroll', onScroll, {passive: true});
+    })();
+    </script>
 </body>
 </html>

@@ -3,7 +3,7 @@ import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request, Body
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request, Body, Depends
 from fastapi.responses import RedirectResponse, JSONResponse, FileResponse
 
 from app.config import get_settings
@@ -20,6 +20,10 @@ from app.services.comparator import compare_candidates
 
 router = APIRouter(prefix="/candidates", tags=["candidates"])
 _executor = ThreadPoolExecutor(max_workers=3)
+
+
+def _get_org(request) -> str:
+    return request.scope.get("org_name", "")
 
 
 def _log(msg: str) -> None:
@@ -104,10 +108,11 @@ async def upload_resumes(
     if not files:
         return RedirectResponse(url=f"/?job_id={job_id}&error=请选择至少一个文件", status_code=303)
 
+    org_name = _get_org(request)
     session = get_session()
     try:
         job = session.get(Job, job_id)
-        if not job:
+        if not job or job.org_name != org_name:
             return RedirectResponse(url="/?error=JD不存在", status_code=303)
 
         candidate_ids = []
@@ -773,11 +778,15 @@ async def final_summary(candidate_id: int):
 # ---------- Reanalyze single candidate ----------
 
 @router.post("/{candidate_id}/reanalyze")
-async def reanalyze_candidate(candidate_id: int):
+async def reanalyze_candidate(candidate_id: int, request: Request):
+    org_name = _get_org(request)
     session = get_session()
     try:
         candidate = session.get(Candidate, candidate_id)
         if not candidate:
+            raise HTTPException(status_code=404, detail="候选人不存在")
+        job = session.get(Job, candidate.job_id)
+        if not job or job.org_name != org_name:
             raise HTTPException(status_code=404, detail="候选人不存在")
         if candidate.status in ("pending", "processing"):
             raise HTTPException(status_code=400, detail="候选人正在处理中")
@@ -813,17 +822,46 @@ async def reanalyze_candidate(candidate_id: int):
 # ---------- Download original resume file ----------
 
 @router.get("/{candidate_id}/download")
-async def download_resume(candidate_id: int):
+async def download_resume(candidate_id: int, view: bool = False, request: Request = None):
     session = get_session()
     try:
         candidate = session.get(Candidate, candidate_id)
         if not candidate:
             raise HTTPException(status_code=404, detail="候选人不存在")
+        # Verify org ownership via job
+        job = session.get(Job, candidate.job_id)
+        org_name = _get_org(request) if request else ""
+        if not job or job.org_name != org_name:
+            raise HTTPException(status_code=404, detail="候选人不存在")
         if not candidate.resume_file_path or not os.path.exists(candidate.resume_file_path):
             raise HTTPException(status_code=404, detail="原始简历文件不存在（可能为旧版本上传）")
+
+        # Determine media type for inline viewing
+        ext = os.path.splitext(candidate.filename)[1].lower()
+        content_type_map = {
+            ".pdf": "application/pdf",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".txt": "text/plain; charset=utf-8",
+        }
+        media_type = content_type_map.get(ext, "application/octet-stream")
+
+        # ASCII-safe filename for Content-Disposition header (latin-1 constraint)
+        safe_name = "".join(c for c in candidate.filename if c.isascii() and c.isprintable() and c not in '"\\')
+        if not safe_name:
+            safe_name = f"resume{ext}"
+
+        if view:
+            # Inline viewing (PDF shown in browser, not downloaded)
+            return FileResponse(
+                path=candidate.resume_file_path,
+                filename=safe_name,
+                media_type=media_type,
+                headers={"Content-Disposition": f"inline; filename={safe_name}"},
+            )
+
         return FileResponse(
             path=candidate.resume_file_path,
-            filename=candidate.filename,
+            filename=safe_name,
             media_type="application/octet-stream",
         )
     finally:
@@ -850,13 +888,17 @@ async def reject_candidate(candidate_id: int):
 
 
 @router.delete("/{candidate_id}")
-async def delete_candidate(candidate_id: int):
+async def delete_candidate(candidate_id: int, request: Request):
     """Permanently delete a candidate and their uploaded files."""
     import shutil
+    org_name = _get_org(request)
     session = get_session()
     try:
         candidate = session.get(Candidate, candidate_id)
         if not candidate:
+            raise HTTPException(status_code=404, detail="候选人不存在")
+        job = session.get(Job, candidate.job_id)
+        if not job or job.org_name != org_name:
             raise HTTPException(status_code=404, detail="候选人不存在")
 
         # Clean up uploaded files
@@ -898,11 +940,15 @@ async def update_name(candidate_id: int, data: dict):
 # ---------- Get candidate ----------
 
 @router.get("/{candidate_id}", response_model=CandidateResponse)
-async def get_candidate(candidate_id: int):
+async def get_candidate(candidate_id: int, request: Request):
+    org_name = _get_org(request)
     session = get_session()
     try:
         candidate = session.get(Candidate, candidate_id)
         if not candidate:
+            raise HTTPException(status_code=404, detail="候选人不存在")
+        job = session.get(Job, candidate.job_id)
+        if not job or job.org_name != org_name:
             raise HTTPException(status_code=404, detail="候选人不存在")
         return candidate
     finally:

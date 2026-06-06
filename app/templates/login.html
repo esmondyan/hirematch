@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HireMatch - 登录</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="login-body">
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-logo">
+                <svg class="login-logo-icon" viewBox="0 0 48 48" fill="none">
+                    <rect x="6" y="6" width="14" height="36" rx="6" fill="currentColor" opacity="0.85"/>
+                    <rect x="28" y="6" width="14" height="36" rx="6" fill="currentColor" opacity="0.85"/>
+                    <rect x="6" y="19" width="36" height="6" fill="currentColor"/>
+                </svg>
+                <h1>HireMatch</h1>
+                <p>智能面试初筛助手</p>
+            </div>
+
+            {% if error %}
+            <div class="alert alert-error">{{ error }}</div>
+            {% endif %}
+
+            <form method="POST" action="/login" class="login-form">
+                <div class="form-group">
+                    <label for="org_name">组织名称</label>
+                    <input type="text" id="org_name" name="org_name" required autofocus
+                           placeholder="输入公司名称，如：XX科技 或 XX科技-技术部">
+                </div>
+                <div class="form-group">
+                    <label for="username">你的姓名</label>
+                    <input type="text" id="username" name="username" required
+                           placeholder="输入你的真实姓名，如：张三">
+                </div>
+                <button type="submit" class="btn btn-primary btn-full">进入 HireMatch</button>
+                <p class="login-hint">同一组织的同事输入相同组织名称即可共享数据。所有操作均记录姓名及时间。</p>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

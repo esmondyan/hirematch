@@ -54,6 +54,7 @@ nano .env   # 填入真实 API Key（必填项见下方）
 LLM_PROVIDER=deepseek
 DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxx
 DATABASE_URL=sqlite:///./data/hirematch.db
+SESSION_SECRET_KEY=<生成随机字符串>
 ```
 
 ```bash
@@ -165,6 +166,7 @@ OPENAI_API_KEY=                             # 使用 OpenAI 时填写
 MATCH_THRESHOLD=60                          # 匹配阈值，低于此分自动拒绝
 MAX_UPLOAD_SIZE_MB=5                        # 上传文件大小限制
 DATABASE_URL=sqlite:///./data/hirematch.db   # 数据库路径，默认即可
+SESSION_SECRET_KEY=随机字符串                 # Session 加密密钥，生产环境必须修改
 ```
 
 ---

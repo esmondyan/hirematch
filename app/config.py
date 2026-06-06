@@ -10,7 +10,8 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     match_threshold: int = 60
     max_upload_size_mb: int = 5
-    database_url: str = "sqlite:///./hirematch.db"
+    database_url: str = "sqlite:///./data/hirematch.db"
+    session_secret_key: str = "hirematch-dev-secret-change-in-production"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

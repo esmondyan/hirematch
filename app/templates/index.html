@@ -17,26 +17,73 @@
         <div class="card">
             <div class="card-header">
                 <h2>职位描述</h2>
+                {% if job %}
+                <span class="jd-edit-hint" id="jd-edit-hint">双击描述可编辑</span>
+                {% endif %}
             </div>
+
+            {% if job %}
+            <!-- ===== View Mode (job exists) ===== -->
+            <div id="jd-view-mode">
+                <h3 style="font-size:18px;font-weight:700;color:var(--gray-900);margin-bottom:12px;">{{ job.title }}</h3>
+                <div id="jd-view-desc" class="jd-display-desc" style="cursor:pointer;min-height:60px;"
+                     title="双击进入编辑模式">
+                    {{ jd_html | safe if jd_html else job.description }}
+                </div>
+                <div style="margin-top:12px;font-size:13px;color:var(--gray-500);">
+                    匹配通过分数线: <strong>{{ job.threshold }}</strong> 分
+                </div>
+            </div>
+            <!-- ===== Edit Mode (hidden) ===== -->
+            <form id="jd-edit-form" style="display:none">
+                <div class="form-group">
+                    <label for="edit-title">职位名称 <span class="required">*</span></label>
+                    <input type="text" id="edit-title" required class="form-input"
+                           value="{{ job.title }}">
+                </div>
+                <div class="form-group">
+                    <label for="edit-description">职位描述 (JD) <span class="required">*</span></label>
+                    <textarea id="edit-description" required class="form-textarea"
+                              rows="12">{{ job.description }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label for="edit-threshold">
+                        匹配通过分数线: <strong id="edit-threshold-value">{{ job.threshold }}</strong> 分
+                    </label>
+                    <input type="range" id="edit-threshold" min="40" max="85" value="{{ job.threshold }}"
+                           oninput="document.getElementById('edit-threshold-value').textContent = this.value">
+                    <div class="range-labels">
+                        <span>宽松 (40)</span>
+                        <span>标准 (60)</span>
+                        <span>严格 (85)</span>
+                    </div>
+                </div>
+                <div class="jd-edit-actions">
+                    <button type="submit" class="btn btn-primary">保存修改</button>
+                    <button type="button" class="btn btn-outline" id="btn-cancel-edit">取消</button>
+                </div>
+                <div id="jd-save-status" style="display:none;margin-top:8px;"></div>
+            </form>
+            {% else %}
+            <!-- ===== New JD Form (no job yet) ===== -->
             <form id="jd-form" action="/jobs/create" method="POST">
                 <div class="form-group">
                     <label for="title">职位名称 <span class="required">*</span></label>
                     <input type="text" id="title" name="title" required
-                           placeholder="例如：高级 Python 后端工程师"
-                           value="{{ job.title if job else '' }}">
+                           placeholder="例如：高级 Python 后端工程师">
                 </div>
                 <div class="form-group">
                     <label for="description">职位描述 (JD) <span class="required">*</span></label>
                     <textarea id="description" name="description" required
                               placeholder="请粘贴完整的职位描述，包括：岗位职责、任职要求、技术栈、经验要求等..."
-                              rows="12">{{ job.description if job else '' }}</textarea>
+                              rows="12"></textarea>
                 </div>
                 <div class="form-group">
                     <label for="threshold">
                         匹配通过分数线: <strong id="threshold-value">60</strong> 分
                     </label>
                     <input type="range" id="threshold" name="threshold"
-                           min="40" max="85" value="{{ job.threshold if job else 60 }}"
+                           min="40" max="85" value="60"
                            oninput="document.getElementById('threshold-value').textContent = this.value">
                     <div class="range-labels">
                         <span>宽松 (40)</span>
@@ -48,6 +95,7 @@
                     保存 JD 并进入上传简历
                 </button>
             </form>
+            {% endif %}
         </div>
 
         <!-- Upload Area -->
@@ -78,6 +126,9 @@
                 <button type="submit" class="btn btn-primary btn-full" id="upload-btn" disabled>
                     开始匹配分析
                 </button>
+                <div id="upload-loading" style="display:none" class="loading-area">
+                    <span class="spinner"></span> 正在上传并分析简历，请稍候...
+                </div>
             </form>
             {% else %}
             <div class="empty-state">
@@ -118,6 +169,105 @@
 {% block scripts %}
 <script src="/static/js/app.js"></script>
 <script>
+// ── JD view/edit mode toggle ──────────────────────────────────────────
+const jdViewMode = document.getElementById('jd-view-mode');
+const jdEditForm = document.getElementById('jd-edit-form');
+const jdEditHint = document.getElementById('jd-edit-hint');
+const jdViewDesc = document.getElementById('jd-view-desc');
+const jdSaveStatus = document.getElementById('jd-save-status');
+
+if (jdViewDesc && jdEditForm) {
+    // Stash original values for cancel
+    var _origTitle = document.getElementById('edit-title').value;
+    var _origDesc = document.getElementById('edit-description').value;
+    var _origThreshold = document.getElementById('edit-threshold').value;
+
+    // Double-click view → edit mode
+    jdViewDesc.addEventListener('dblclick', function() {
+        jdViewMode.style.display = 'none';
+        jdEditForm.style.display = 'block';
+        if (jdEditHint) jdEditHint.textContent = '编辑中...';
+        jdSaveStatus.style.display = 'none';
+    });
+
+    // Cancel button → back to view mode
+    document.getElementById('btn-cancel-edit').addEventListener('click', function() {
+        document.getElementById('edit-title').value = _origTitle;
+        document.getElementById('edit-description').value = _origDesc;
+        document.getElementById('edit-threshold').value = _origThreshold;
+        document.getElementById('edit-threshold-value').textContent = _origThreshold;
+        jdEditForm.style.display = 'none';
+        jdViewMode.style.display = 'block';
+        if (jdEditHint) jdEditHint.textContent = '双击描述可编辑';
+    });
+
+    // Save via AJAX
+    jdEditForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const title = document.getElementById('edit-title').value.trim();
+        const description = document.getElementById('edit-description').value.trim();
+        const threshold = parseInt(document.getElementById('edit-threshold').value);
+        if (!title || !description) {
+            jdSaveStatus.style.display = 'block';
+            jdSaveStatus.className = 'alert alert-error';
+            jdSaveStatus.textContent = '职位名称和描述不能为空';
+            return;
+        }
+        try {
+            const res = await fetch('/jobs/{{ job.id }}', {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({title, description, threshold})
+            });
+            if (res.ok) {
+                jdSaveStatus.style.display = 'block';
+                jdSaveStatus.className = 'jd-save-status jd-status-ok';
+                jdSaveStatus.textContent = '✓ 已保存';
+                // Update view mode display
+                jdViewMode.querySelector('h3').textContent = title;
+                jdViewMode.querySelector('strong').textContent = threshold;
+                jdViewDesc.innerHTML = '<p style="color:var(--gray-500);font-size:14px;">（描述已更新，刷新页面查看格式化效果）</p>';
+                // Switch back to view after a moment
+                setTimeout(() => {
+                    jdEditForm.style.display = 'none';
+                    jdViewMode.style.display = 'block';
+                    if (jdEditHint) jdEditHint.textContent = '双击描述可编辑';
+                    jdSaveStatus.style.display = 'none';
+                }, 800);
+            } else {
+                const err = await res.json();
+                jdSaveStatus.style.display = 'block';
+                jdSaveStatus.className = 'alert alert-error';
+                jdSaveStatus.textContent = '保存失败: ' + (err.detail || '未知错误');
+            }
+        } catch(err) {
+            jdSaveStatus.style.display = 'block';
+            jdSaveStatus.className = 'alert alert-error';
+            jdSaveStatus.textContent = '保存失败: ' + err.message;
+        }
+    });
+}
+
+// Intercept upload form submission for feedback
+const uploadForm = document.getElementById('upload-form');
+if (uploadForm) {
+    uploadForm.addEventListener('submit', function(e) {
+        const btn = document.getElementById('upload-btn');
+        const zone = document.getElementById('upload-zone');
+        const loading = document.getElementById('upload-loading');
+        if (btn.disabled || selectedFiles.length === 0) {
+            e.preventDefault();
+            return;
+        }
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> 上传分析中...';
+        btn.style.opacity = '0.7';
+        if (zone) zone.style.pointerEvents = 'none';
+        if (zone) zone.style.opacity = '0.5';
+        if (loading) loading.style.display = 'flex';
+    });
+}
+
 async function deleteJob(jobId, title) {
     if (!confirm('确定要删除「' + title + '」及其所有候选人数据吗？此操作不可恢复。')) return;
     try {

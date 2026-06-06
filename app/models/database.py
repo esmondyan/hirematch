@@ -1,5 +1,6 @@
 import json
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import Integer, String, Text, Boolean, DateTime, ForeignKey, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, Session
@@ -9,10 +10,38 @@ class Base(DeclarativeBase):
     pass
 
 
+class Organization(Base):
+    """Simple org registry — no password, just namespace."""
+    __tablename__ = "organizations"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(String(128), nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AccessLog(Base):
+    """Record every access for audit trail."""
+    __tablename__ = "access_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    org_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    username: Mapped[str] = mapped_column(String(100), nullable=False)
+    action: Mapped[str] = mapped_column(String(50), nullable=False)  # LOGIN, PAGE, API, LOGOUT
+    path: Mapped[str] = mapped_column(String(500), nullable=False)
+    method: Mapped[str] = mapped_column(String(10), nullable=False)
+    ip: Mapped[str] = mapped_column(String(45), nullable=True)  # IPv6 max 45 chars
+    user_agent: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    client_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    detail: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
 class Job(Base):
     __tablename__ = "jobs"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    org_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     threshold: Mapped[int] = mapped_column(Integer, default=60)
@@ -106,28 +135,39 @@ class Candidate(Base):
         self._final_summary = json.dumps(value, ensure_ascii=False) if value else None
 
 
-engine = create_engine("sqlite:///./hirematch.db", echo=False)
+engine = None
+
+
+def _get_engine():
+    global engine
+    if engine is None:
+        from app.config import get_settings
+        db_url = get_settings().database_url
+        engine = create_engine(db_url, echo=False)
+    return engine
 
 
 def init_db():
-    Base.metadata.create_all(engine)
-    with engine.connect() as conn:
-        try:
-            conn.execute(text("ALTER TABLE candidates ADD COLUMN marked_for_interview BOOLEAN DEFAULT 0"))
-            conn.commit()
-        except Exception:
-            pass
-        try:
-            conn.execute(text("ALTER TABLE jobs ADD COLUMN comparison_result TEXT"))
-            conn.commit()
-        except Exception:
-            pass
-        try:
-            conn.execute(text("ALTER TABLE candidates ADD COLUMN resume_file_path VARCHAR(500)"))
-            conn.commit()
-        except Exception:
-            pass
+    eng = _get_engine()
+    Base.metadata.create_all(eng)
+    with eng.connect() as conn:
+        for stmt in [
+            "ALTER TABLE candidates ADD COLUMN marked_for_interview BOOLEAN DEFAULT 0",
+            "ALTER TABLE jobs ADD COLUMN comparison_result TEXT",
+            "ALTER TABLE candidates ADD COLUMN resume_file_path VARCHAR(500)",
+            "ALTER TABLE jobs ADD COLUMN org_name VARCHAR(100)",
+            # New: make password_hash optional (we dropped it from model, old column stays harmless)
+        ]:
+            try:
+                conn.execute(text(stmt))
+                conn.commit()
+            except Exception:
+                pass
 
 
 def get_session() -> Session:
-    return Session(engine)
+    return Session(_get_engine())
+
+
+def generate_client_id() -> str:
+    return uuid.uuid4().hex

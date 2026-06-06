@@ -45,14 +45,16 @@ a { color: var(--primary); text-decoration: none; }
     position: sticky;
     top: 0;
     z-index: 100;
+    transition: padding 0.3s, box-shadow 0.3s;
 }
 .header-content {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 14px 24px;
+    padding: 16px 24px;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
+    transition: padding 0.3s;
 }
 .logo {
     display: flex;
@@ -60,29 +62,70 @@ a { color: var(--primary); text-decoration: none; }
     gap: 10px;
     text-decoration: none;
     color: inherit;
+    flex-shrink: 0;
 }
 .logo-icon {
-    background: var(--primary);
-    color: #fff;
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    font-size: 14px;
-    letter-spacing: -0.5px;
+    color: var(--primary);
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    transition: width 0.3s, height 0.3s;
 }
 .logo-text {
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 700;
     color: var(--gray-900);
     letter-spacing: -0.3px;
+    transition: font-size 0.3s;
 }
 .header-subtitle {
     color: var(--gray-500);
     font-size: 14px;
+    transition: opacity 0.3s, font-size 0.3s;
+}
+.header-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+.header-org-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--gray-500);
+    background: var(--gray-100);
+    padding: 3px 10px;
+    border-radius: 100px;
+}
+.header-logout-link {
+    font-size: 13px;
+    color: var(--gray-400);
+    text-decoration: none;
+    transition: color 0.15s;
+}
+.header-logout-link:hover {
+    color: var(--danger);
+}
+
+/* Header shrunk (scroll down) */
+.app-header.header-shrunk {
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+}
+.header-shrunk .header-content {
+    padding: 8px 24px;
+}
+.header-shrunk .logo-icon {
+    width: 28px;
+    height: 28px;
+}
+.header-shrunk .logo-text {
+    font-size: 16px;
+}
+.header-shrunk .header-subtitle {
+    opacity: 0;
+    font-size: 0;
+    overflow: hidden;
 }
 
 /* ===== Main Layout ===== */
@@ -465,7 +508,7 @@ input[type="range"] { width: 100%; margin-top: 8px; }
     color: var(--gray-500);
     background: var(--gray-50);
     user-select: none;
-    border-bottom: 1px solid transparent;
+    border-bottom: 1px solid var(--gray-200);
     transition: background 0.2s;
     display: flex;
     align-items: center;
@@ -475,16 +518,27 @@ input[type="range"] { width: 100%; margin-top: 8px; }
     cursor: pointer;
     flex-shrink: 0;
 }
-.raw-doc-summary > span {
-    flex: 1;
-}
+
 .btn-reanalyze-inline {
     margin-left: auto;
 }
 .raw-doc-summary:hover { color: var(--primary); background: var(--gray-100); }
-.raw-doc-details[open] .raw-doc-summary {
-    border-bottom-color: var(--border);
+.raw-doc-summary-arrow {
+    font-size: 12px;
+    margin-left: 6px;
+    transition: transform 0.2s;
+    flex-shrink: 0;
 }
+.resume-summary-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+.resume-viewer-body {
+    /* no extra styling needed */
+}
+
 /* Rendered resume */
 .raw-doc-rendered {
     font-size: 13px;
@@ -1314,6 +1368,13 @@ input[type="range"] { width: 100%; margin-top: 8px; }
     flex-wrap: wrap;
 }
 
+/* JD edit hint */
+.jd-edit-hint {
+    font-size: 12px;
+    color: var(--gray-400);
+    font-weight: 400;
+}
+
 /* ===== JD Edit Card ===== */
 .jd-edit-card { padding: 0; overflow: hidden; margin-bottom: 20px; }
 .jd-edit-summary {
@@ -1782,6 +1843,135 @@ input[type="range"] { width: 100%; margin-top: 8px; }
     flex-wrap: wrap;
 }
 
+/* ===== Resume Tab Viewer ===== */
+.resume-tab-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--gray-400);
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.15s;
+    padding: 0 4px;
+}
+.resume-tab-label:hover {
+    color: var(--primary);
+}
+.resume-tab-label.active {
+    color: var(--primary);
+    font-weight: 600;
+}
+.resume-tab-label + .resume-tab-label::before {
+    content: '|';
+    color: var(--gray-300);
+    margin-right: 8px;
+    cursor: default;
+    font-weight: 400;
+}
+.resume-tab-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+.resume-tab-panel {
+    padding: 0;
+}
+.resume-tab-panel .raw-doc-rendered {
+    padding: 16px 20px;
+    max-height: 600px;
+    overflow-y: auto;
+}
+.resume-pdf-viewer {
+    width: 100%;
+    height: 600px;
+    border: none;
+    display: block;
+}
+.resume-fallback {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--gray-500);
+}
+.resume-fallback p {
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+
+/* ===== Login Page ===== */
+.login-body {
+    background: linear-gradient(135deg, #f0f4ff 0%, #e8edf5 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.login-container {
+    width: 100%;
+    max-width: 420px;
+    padding: 24px;
+}
+.login-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 40px 32px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.04);
+}
+.login-logo {
+    text-align: center;
+    margin-bottom: 32px;
+}
+.login-logo-icon {
+    width: 56px;
+    height: 56px;
+    color: var(--primary);
+    margin-bottom: 12px;
+}
+.login-logo h1 {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--gray-900);
+    margin-bottom: 4px;
+}
+.login-logo p {
+    font-size: 14px;
+    color: var(--gray-500);
+}
+.login-form .form-group {
+    margin-bottom: 16px;
+}
+.login-form label {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--gray-700);
+    margin-bottom: 6px;
+}
+.login-form input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--gray-300);
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.login-form input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+}
+.login-hint {
+    text-align: center;
+    font-size: 13px;
+    color: var(--gray-400);
+    margin-top: 16px;
+}
+.login-form .btn {
+    padding: 12px 20px;
+    font-size: 16px;
+    margin-top: 8px;
+}
+
 /* ================================================================
    MOBILE RESPONSIVE STYLES
    ================================================================ */
@@ -1792,8 +1982,10 @@ input[type="range"] { width: 100%; margin-top: 8px; }
   /* ---- Base Layout ---- */
   .page-container { padding: 16px 12px; }
   .header-content { padding: 10px 12px; }
+  .logo-icon { width: 30px; height: 30px; }
   .logo-text { font-size: 16px; }
   .header-subtitle { display: none; }
+  .header-org-label { font-size: 11px; }
   .app-main { min-height: calc(100vh - 48px); }
 
   /* ---- Cards ---- */
@@ -1882,10 +2074,11 @@ input[type="range"] { width: 100%; margin-top: 8px; }
   /* ---- Loading Area ---- */
   .loading-area { padding: 16px; font-size: 14px; }
 
-  /* ---- Raw Docs ---- */
-  .raw-doc-summary { padding: 10px 14px; font-size: 13px; }
+  /* ---- Raw Docs / Resume Tabs ---- */
+  .resume-tab-label { font-size: 13px; }
+  .resume-pdf-viewer { height: 450px; }
   .raw-doc-rendered { max-height: 350px; padding: 12px 14px; font-size: 12px; }
-  .raw-doc-summary .btn { font-size: 11px; padding: 4px 10px; }
+  .resume-tab-actions .btn { font-size: 11px; padding: 4px 10px; }
 
   /* ---- Credibility ---- */
   .cred-header { flex-direction: column; align-items: flex-start; gap: 6px; }
@@ -1924,8 +2117,10 @@ input[type="range"] { width: 100%; margin-top: 8px; }
   /* ---- Base ---- */
   .page-container { padding: 12px 8px; }
   .header-content { padding: 8px; gap: 8px; }
-  .logo-icon { width: 28px; height: 28px; font-size: 12px; }
+  .logo-icon { width: 26px; height: 26px; }
   .logo-text { font-size: 14px; }
+  .header-org-label { font-size: 10px; padding: 2px 6px; }
+  .header-logout-link { font-size: 11px; }
 
   /* ---- Cards ---- */
   .card { padding: 12px; margin-bottom: 10px; border-radius: 6px; }
@@ -2005,9 +2200,10 @@ input[type="range"] { width: 100%; margin-top: 8px; }
   .focus-textarea { font-size: 13px; }
   .focus-edit-input { font-size: 13px; }
 
-  /* ---- Raw Docs ---- */
+  /* ---- Raw Docs / Resume Tabs ---- */
   .raw-doc-summary { flex-wrap: wrap; gap: 6px; }
-  .raw-doc-summary .btn { width: auto; font-size: 10px; }
+  .resume-pdf-viewer { height: 350px; }
+  .resume-tab-actions .btn { width: auto; font-size: 10px; }
 
   /* ---- Interview Generate ---- */
   .interview-generate-inner { padding: 4px 0; }
@@ -2015,4 +2211,10 @@ input[type="range"] { width: 100%; margin-top: 8px; }
 
   /* ---- Spinner ---- */
   .spinner { width: 12px; height: 12px; }
+
+  /* ---- Login ---- */
+  .login-container { padding: 12px; }
+  .login-card { padding: 28px 20px; }
+  .login-logo-icon { width: 44px; height: 44px; }
+  .login-logo h1 { font-size: 20px; }
 }

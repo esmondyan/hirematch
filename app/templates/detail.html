@@ -1,0 +1,997 @@
+{% extends "base.html" %}
+{% block title %}{{ candidate.name }} - 详细报告{% endblock %}
+
+{% block content %}
+<div class="page-container">
+    <div class="detail-header">
+        <a href="/results/{{ candidate.job_id }}" class="btn-back">&larr; 返回结果列表</a>
+        <div class="detail-title-row">
+            <div>
+                <h1 id="candidate-name" class="editable-name" title="点击编辑姓名" onclick="editName()">{{ candidate.name }}</h1>
+                <p class="job-title-label">{{ job.title }} | {{ candidate.filename }}</p>
+            </div>
+            {% if candidate.overall_score is not none %}
+            <div class="big-score {% if candidate.passed %}score-high{% else %}score-low{% endif %}">
+                {{ candidate.overall_score }}<span class="score-unit">分</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Original Resume -->
+    <div class="card raw-docs-card">
+        <details class="raw-doc-details">
+            <summary class="raw-doc-summary">
+                <span>查看原始简历</span>
+                <span style="display:flex;gap:6px;">
+                    {% if candidate.resume_file_path %}
+                    <a href="/candidates/{{ candidate.id }}/download" class="btn btn-outline btn-sm" title="下载原始简历文件">下载原始文件</a>
+                    {% endif %}
+                    <button class="btn btn-outline btn-sm btn-reanalyze-inline" id="btn-reanalyze" onclick="reanalyzeOne(event)">重新分析此简历</button>
+                </span>
+            </summary>
+            <div class="raw-doc-rendered">{{ resume_html | safe }}</div>
+        </details>
+    </div>
+
+    {% if candidate.status == "failed" %}
+    <div class="alert alert-error"><strong>处理失败：</strong> {{ candidate.error_message }}</div>
+    {% endif %}
+
+    {% if candidate.status == "processing" %}
+    <div class="card processing-banner">
+        <div class="processing-inner">
+            <span class="spinner"></span>
+            <span>正在重新分析中，预计需要 10-20 秒...</span>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if candidate.match_result %}
+    {% set mr = candidate.match_result %}
+
+    <!-- Summary -->
+    <div class="card summary-card">
+        <div class="status-tag {% if mr.passed %}tag-passed{% else %}tag-rejected{% endif %}">
+            {{ "通过筛选" if mr.passed else "未通过筛选" }}
+        </div>
+        <p>{{ mr.summary }}</p>
+    </div>
+
+    <!-- Dimension scores -->
+    <div class="card">
+        <h2>各维度评分</h2>
+        <div class="dimensions">
+            {% for dim in mr.dimensions %}
+            <div class="dimension-item">
+                <div class="dim-header">
+                    <span class="dim-name">{{ dim.name }} <span class="dim-weight">(权重 {{ dim.weight }}%)</span></span>
+                    <span class="dim-score">{{ dim.score }}</span>
+                </div>
+                <div class="progress-bar"><div class="progress-fill" style="width:{{ dim.score }}%"></div></div>
+                <div class="dim-detail">
+                    {% if dim.evidence %}<div class="dim-evidence"><span class="label-good">匹配</span> {{ dim.evidence }}</div>{% endif %}
+                    {% if dim.gap %}<div class="dim-gap"><span class="label-bad">差距</span> {{ dim.gap }}</div>{% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Highlights & Gaps -->
+    <div class="two-column">
+        <div class="card">
+            <h2>候选人亮点</h2>
+            <ul class="highlight-list">{% for h in mr.highlights %}<li>{{ h }}</li>{% endfor %}</ul>
+        </div>
+        <div class="card">
+            <h2>能力差距</h2>
+            {% if mr.gaps %}
+            <ul class="gap-list">{% for g in mr.gaps %}<li>{{ g }}</li>{% endfor %}</ul>
+            {% else %}<p class="empty-text">无明显差距</p>{% endif %}
+        </div>
+    </div>
+
+    {% if mr.rejection_reasons %}
+    <div class="card rejection-card">
+        <h2>拒绝原因</h2>
+        <ul class="rejection-list">{% for r in mr.rejection_reasons %}<li>{{ r }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    {% endif %}
+
+    <!-- Credibility -->
+    {% if candidate.credibility_result %}
+    {% set cr = candidate.credibility_result %}
+    <div class="card credibility-card">
+        <div class="cred-header">
+            <h2>简历可信度</h2>
+            <span class="cred-score cred-{{ cr.level }}">
+                {{ cr.credibility_score }} 分 · {{ {"high":"高可信","medium":"中等","low":"低可信","error":"分析异常"}.get(cr.level, cr.level) }}
+            </span>
+        </div>
+        <p class="cred-summary">{{ cr.summary }}</p>
+        {% if cr.findings %}
+        <div class="cred-findings">
+            {% for f in cr.findings %}
+            <div class="cred-finding cred-{{ f.type }}">
+                <span class="cred-icon">{{ {"positive":"✓","warning":"⚠","risk":"✗"}.get(f.type, "•") }}</span>
+                {{ f.detail }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Interview Section -->
+    {% if candidate.interview_result %}
+    {% set ir = candidate.interview_result %}
+    {% set answers = candidate.answers or {} %}
+
+    {% if ir.question_count == 0 %}
+    <!-- State B: Focus ready, waiting for user to confirm and generate questions -->
+    <div id="interview-section" class="card interview-card">
+        <div class="interview-header">
+            <h2>面试重点</h2>
+            <div class="interview-meta">
+                <span>建议时长: {{ ir.estimated_duration }}</span>
+                <span style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <button class="btn btn-primary btn-sm" id="btn-confirm-focus" onclick="confirmFocusAndGenerate()">确认出题</button>
+                    <button class="btn btn-outline btn-sm" id="btn-regenerate-focus" onclick="regenerateFocus()">重定重点</button>
+                </span>
+            </div>
+        </div>
+
+        <div class="interview-focus" id="focus-display">
+            <strong>请确认或编辑以下面试重点，确认后将据此生成具体面试题：</strong>
+            <ul id="focus-list">
+                {% for f in ir.interview_focus %}
+                <li class="focus-item">
+                    <span class="focus-text">{{ f }}</span>
+                    <button class="focus-btn focus-btn-edit" onclick="editFocusItem(this)" title="编辑">✎</button>
+                    <button class="focus-btn focus-btn-del" onclick="deleteFocusItem(this)" title="删除">✕</button>
+                </li>
+                {% endfor %}
+            </ul>
+            <button class="btn btn-outline btn-sm" onclick="addFocusItem()" style="margin-top:8px">+ 添加重点</button>
+        </div>
+
+        <div id="focus-edit-area" class="focus-edit-area" style="display:none">
+            <strong>编辑面试重点（每行一个）：</strong>
+            <textarea id="focus-textarea" class="focus-textarea" rows="5">{% for f in ir.interview_focus %}{{ f }}{% if not loop.last %}{{ "\n" }}{% endif %}{% endfor %}</textarea>
+        </div>
+
+        <div id="focus-loading" style="display:none" class="loading-area">
+            <span class="spinner"></span> <span id="focus-loading-text">正在生成面试重点，预计需要 10-15 秒...</span>
+        </div>
+        <div id="questions-loading" style="display:none" class="loading-area">
+            <span class="spinner"></span> 正在根据面试重点生成具体面试题，预计需要 10-15 秒...
+        </div>
+    </div>
+
+    {% else %}
+    <!-- State C: Full questions ready -->
+    {% set iq = ir.interview_questions %}
+    <div id="interview-section" class="card interview-card">
+        <div class="interview-header">
+            <h2>面试问题</h2>
+            <div class="interview-meta">
+                <span>共 {{ ir.question_count }} 题</span>
+                <span>建议时长: {{ ir.estimated_duration }}</span>
+                <span style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <button class="btn btn-outline btn-sm" id="btn-regenerate-questions" onclick="regenerateQuestionsKeepFocus()">重新出题</button>
+                    <button class="btn btn-outline btn-sm" id="btn-regenerate-focus" onclick="regenerateFocusFromQuestions()">重定重点</button>
+                    <button class="btn btn-outline btn-sm" onclick="saveAllAnswers()">保存点评</button>
+                </span>
+            </div>
+        </div>
+
+        {% if ir.interview_focus %}
+        <div class="interview-focus">
+            <strong>面试重点：</strong>
+            <ul>{% for f in ir.interview_focus %}<li>{{ f }}</li>{% endfor %}</ul>
+        </div>
+        {% endif %}
+
+        {% for category_key, category_label in [("technical","技术问题"), ("behavioral","行为问题"), ("gap_probing","缺口探查")] %}
+        {% if iq[category_key] %}
+        <div class="question-section">
+            <h3>{{ category_label }}</h3>
+            {% for q in iq[category_key] %}
+            {% set q_idx = loop.index0 %}
+            {% set qkey = category_key ~ "_" ~ q_idx %}
+            {% set eval_data = answers.get("_eval_" + qkey) if answers else none %}
+            <div class="question-card{% if eval_data and eval_data.skipped %} q-skipped{% endif %}" id="qcard-{{ qkey }}">
+                <div class="question-header">
+                    <span class="q-number">{{ loop.index }}</span>
+                    <span class="q-meta">
+                        <span class="tag tag-category">{{ q.category }}</span>
+                        <span class="tag tag-difficulty">{{ q.difficulty }}</span>
+                        {% if q.estimated_minutes %}<span class="tag tag-time">~{{ q.estimated_minutes }}min</span>{% endif %}
+                    </span>
+                    <div class="question-actions">
+                        <button class="btn-copy btn-replace" onclick="replaceQuestion('{{ category_key }}', {{ q_idx }})" title="换一题">
+                            <svg class="btn-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                            换题
+                        </button>
+                    </div>
+                </div>
+                <p class="question-text">{{ q.question }}</p>
+                <div class="question-purpose"><strong>考察目的：</strong>{{ q.purpose }}</div>
+
+                {% if q.expected_points %}
+                <!-- Point-by-point rating -->
+                <div class="evaluation-area" id="eval-area-{{ qkey }}">
+                    <div class="eval-header">
+                        <strong>逐点评分（1-5级）</strong>
+                        <label class="skip-label">
+                            <input type="checkbox" class="skip-checkbox"
+                                   onchange="toggleSkip('{{ qkey }}')"
+                                   {% if eval_data and eval_data.skipped %}checked{% endif %}>
+                            跳过 / 未面试此题
+                        </label>
+                    </div>
+                    <div class="eval-points" id="eval-points-{{ qkey }}">
+                        {% for ep in q.expected_points %}
+                        {% set p_idx = loop.index0 %}
+                        <div class="eval-point-row">
+                            <span class="eval-point-text">{{ ep }}</span>
+                            <div class="eval-ratings" id="rating-{{ qkey }}-{{ p_idx }}">
+                                {% for r in [1,2,3,4,5] %}
+                                <label class="rating-label{% if eval_data and not eval_data.skipped and eval_data.ratings and eval_data.ratings[p_idx] == r %} rating-selected{% endif %}">
+                                    <input type="radio" name="rating_{{ qkey }}_{{ p_idx }}" value="{{ r }}"
+                                           onchange="ratePoint('{{ qkey }}', {{ p_idx }}, {{ r }})"
+                                           {% if eval_data and not eval_data.skipped and eval_data.ratings and eval_data.ratings[p_idx] == r %}checked{% endif %}>
+                                    <span class="rating-dot">{{ r }}</span>
+                                </label>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div class="eval-score-summary" id="eval-sum-{{ qkey }}" style="{% if not eval_data or not eval_data.ratings or eval_data.skipped %}display:none{% endif %}">
+                        {% set rating_count = eval_data.ratings | length if eval_data and eval_data.ratings else 0 %}
+                        {% if eval_data and eval_data.ratings and not eval_data.skipped and rating_count > 0 %}
+                        本题均分: <strong>{{ "%.1f" | format(eval_data.ratings | sum / rating_count) }} / 5</strong>
+                        （{{ rating_count }}个评分点）
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Interviewer notes area -->
+                <div class="answer-area">
+                    <textarea class="answer-textarea" data-qkey="{{ qkey }}"
+                              placeholder="面试官点评（选填）：记录正面或负面主观感受...">{{ answers.get(qkey, "") }}</textarea>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endfor %}
+
+        <div id="questions-loading" style="display:none" class="loading-area">
+            <span class="spinner"></span> 正在重新出题，预计需要 10-15 秒...
+        </div>
+    </div>
+    {% endif %}
+
+    {% elif candidate.passed %}
+    <!-- State A: No interview work done yet - show generate button -->
+    <div class="card interview-card interview-generate-card">
+        <div class="interview-generate-inner">
+            <div class="generate-info">
+                <h2>面试问题</h2>
+                <p>尚未为此候选人生成面试问题。点击下方按钮后将先生成面试重点，确认后再生成具体面试题。</p>
+            </div>
+            <button class="btn btn-primary" id="btn-generate-focus" onclick="generateFocus()">生成面试问题</button>
+        </div>
+        <div id="generate-loading" style="display:none" class="loading-area">
+            <span class="spinner"></span> 正在生成面试重点，预计需要 10-15 秒...
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Final Summary (only visible when interview questions exist) -->
+    {% if candidate.interview_result and candidate.interview_result.question_count > 0 and candidate.status != 'processing' %}
+    <div class="card final-card">
+        <div class="final-header">
+            <h2>面试总结与建议</h2>
+            <button class="btn btn-primary" id="btn-summary" onclick="generateFinalSummary()">生成面试总结</button>
+        </div>
+        <div id="summary-result">
+            {% if candidate.final_summary %}
+            {% set fs = candidate.final_summary %}
+            <div class="summary-result-inner">
+                <div class="recommendation-badge rec-{{ fs.recommendation }}">
+                    {{ {"hire":"建议录用","hold":"待定","reject":"不建议录用"}.get(fs.recommendation, fs.recommendation) }}
+                    <span class="rec-confidence">（置信度: {{ {"high":"高","medium":"中","low":"低"}.get(fs.confidence, fs.confidence) }}）</span>
+                </div>
+                <p class="summary-text">{{ fs.overall_assessment }}</p>
+                {% if fs.strengths_confirmed %}
+                <div class="summary-sub">
+                    <h4>已验证优势</h4>
+                    <ul>{% for s in fs.strengths_confirmed %}<li>{{ s }}</li>{% endfor %}</ul>
+                </div>
+                {% endif %}
+                {% if fs.concerns %}
+                <div class="summary-sub">
+                    <h4>风险点</h4>
+                    <ul>{% for c in fs.concerns %}<li>{{ c }}</li>{% endfor %}</ul>
+                </div>
+                {% endif %}
+                {% if fs.suggested_level or fs.suggested_salary_range %}
+                <div class="summary-meta-row">
+                    {% if fs.suggested_level %}<span>建议职级: <strong>{{ fs.suggested_level }}</strong></span>{% endif %}
+                    {% if fs.suggested_salary_range %}<span>建议薪资: <strong>{{ fs.suggested_salary_range }}</strong></span>{% endif %}
+                </div>
+                {% endif %}
+                {% if fs.next_steps %}
+                <div class="summary-sub">
+                    <h4>后续步骤</h4>
+                    <ol>{% for ns in fs.next_steps %}<li>{{ ns }}</li>{% endfor %}</ol>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if fs.interviewer_impression %}
+            {% set imp = fs.interviewer_impression %}
+            <div class="impression-section">
+                <h3>面试官印象</h3>
+                <div class="impression-grid">
+                    {% set dims = [
+                        ("basic_knowledge", "基本知识"),
+                        ("professional_knowledge", "相关专业知识"),
+                        ("practical_experience", "实际经验"),
+                        ("traits", "特性"),
+                        ("attitude", "态度"),
+                        ("work_history", "工作经历"),
+                        ("future_potential", "未来发展潜力"),
+                        ("judgment_ability", "判断决策能力")
+                    ] %}
+                    {% for key, label in dims %}
+                    {% set item = imp.get(key) %}
+                    <div class="impression-row">
+                        <span class="impression-label">{{ label }}</span>
+                        <div class="impression-score-bar">
+                            {% for i in range(1, 6) %}
+                            <span class="impression-dot{% if item and item.score >= i %} active{% endif %}"></span>
+                            {% endfor %}
+                        </div>
+                        <span class="impression-score">{{ item.score if item else "-" }}/5</span>
+                        <span class="impression-comment">{{ item.comment if item else "" }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="impression-overall">
+                    <span class="impression-rating">总体评定：<strong>{{ imp.overall_rating }}</strong></span>
+                </div>
+                {% if imp.overall_comment %}
+                <p class="impression-overall-comment">{{ imp.overall_comment }}</p>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            {% if fs.comprehensive_assessment %}
+            {% set ca = fs.comprehensive_assessment %}
+            <div class="comprehensive-section">
+                <h3>综合评估</h3>
+                <div class="comprehensive-grid">
+                    <div class="comp-row"><span class="comp-label">学历</span><span class="comp-value">{{ ca.education }}</span></div>
+                    <div class="comp-row"><span class="comp-label">性别</span><span class="comp-value">{{ ca.gender }}</span></div>
+                    <div class="comp-row"><span class="comp-label">年龄</span><span class="comp-value">{{ ca.age }}</span></div>
+                    <div class="comp-row"><span class="comp-label">学校</span><span class="comp-value">{{ ca.school }}</span></div>
+                    <div class="comp-row"><span class="comp-label">工作经验</span><span class="comp-value">{{ ca.work_experience }}</span></div>
+                </div>
+                {% if ca.work_skills %}
+                {% set ws = ca.work_skills %}
+                <div class="comp-skills">
+                    <h4>工作技术</h4>
+                    <div class="comp-row"><span class="comp-label">开发能力</span><span class="comp-value">{{ ws.development }}</span></div>
+                    <div class="comp-row"><span class="comp-label">沟通能力</span><span class="comp-value">{{ ws.communication }}</span></div>
+                    <div class="comp-row"><span class="comp-label">其他情况</span><span class="comp-value">{{ ws.other }}</span></div>
+                </div>
+                {% endif %}
+                <div class="comp-hiring">
+                    <h4>招聘意见</h4>
+                    <p>{{ ca.hiring_opinion }}</p>
+                </div>
+            </div>
+            {% endif %}
+            {% endif %}
+        </div>
+        <div id="summary-loading" style="display:none" class="loading-area">
+            <span class="spinner"></span> 正在综合分析中，预计需要 10-15 秒...
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const candidateId = {{ candidate.id }};
+
+// ---- Answer saving ----
+async function saveAllAnswers() {
+    const answers = {};
+    document.querySelectorAll('.answer-textarea').forEach(ta => {
+        const key = ta.dataset.qkey;
+        if (ta.value.trim()) answers[key] = ta.value.trim();
+    });
+    if (Object.keys(answers).length === 0) { alert('请至少填写一个问题的点评'); return; }
+    try {
+        const res = await fetch(`/candidates/${candidateId}/answers`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({answers})
+        });
+        if (res.ok) {
+            const btn = document.querySelector('.interview-meta .btn-outline');
+            const orig = btn.textContent;
+            btn.textContent = '已保存!';
+            btn.classList.add('copied');
+            setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+        } else {
+            alert('保存失败');
+        }
+    } catch(e) { alert('保存失败: ' + e.message); }
+}
+
+// ---- Point-by-point rating & skip ----
+
+const evalCache = {};
+
+function getEvalData(qkey) {
+    if (!evalCache[qkey]) {
+        const ratings = [];
+        const seenNames = new Set();
+        document.querySelectorAll('input[name^="rating_' + qkey + '_"]:checked').forEach(inp => {
+            if (!seenNames.has(inp.name)) {
+                seenNames.add(inp.name);
+                ratings.push(parseInt(inp.value));
+            }
+        });
+        const skipCb = document.querySelector('#eval-area-' + qkey + ' .skip-checkbox');
+        evalCache[qkey] = {
+            ratings: ratings,
+            skipped: skipCb ? skipCb.checked : false
+        };
+    }
+    return evalCache[qkey];
+}
+
+async function ratePoint(qkey, pointIndex, value) {
+    const labels = document.querySelectorAll('#rating-' + qkey + '-' + pointIndex + ' .rating-label');
+    labels.forEach(l => l.classList.remove('rating-selected'));
+    const selectedInput = document.querySelector('input[name="rating_' + qkey + '_' + pointIndex + '"][value="' + value + '"]');
+    if (selectedInput) {
+        selectedInput.closest('.rating-label').classList.add('rating-selected');
+    }
+    const data = getEvalData(qkey);
+    while (data.ratings.length <= pointIndex) data.ratings.push(0);
+    data.ratings[pointIndex] = value;
+    evalCache[qkey] = data;
+    await saveEvaluation(qkey);
+    updateScoreSummary(qkey);
+}
+
+async function toggleSkip(qkey) {
+    const cb = document.querySelector('#eval-area-' + qkey + ' .skip-checkbox');
+    const skipped = cb ? cb.checked : false;
+    const data = getEvalData(qkey);
+    data.skipped = skipped;
+    evalCache[qkey] = data;
+    const card = document.getElementById('qcard-' + qkey);
+    if (card) {
+        if (skipped) card.classList.add('q-skipped');
+        else card.classList.remove('q-skipped');
+    }
+    const pointsArea = document.getElementById('eval-points-' + qkey);
+    const summary = document.getElementById('eval-sum-' + qkey);
+    if (skipped) {
+        if (pointsArea) pointsArea.style.opacity = '0.4';
+        if (summary) summary.style.display = 'none';
+    } else {
+        if (pointsArea) pointsArea.style.opacity = '1';
+        updateScoreSummary(qkey);
+    }
+    await saveEvaluation(qkey);
+}
+
+function updateScoreSummary(qkey) {
+    const data = getEvalData(qkey);
+    const summary = document.getElementById('eval-sum-' + qkey);
+    if (!summary) return;
+    if (data.skipped || !data.ratings || data.ratings.length === 0 || data.ratings.every(r => r === 0)) {
+        summary.style.display = 'none';
+        return;
+    }
+    const total = data.ratings.reduce((a, b) => a + b, 0);
+    const rated = data.ratings.filter(r => r > 0).length;
+    if (rated === 0) { summary.style.display = 'none'; return; }
+    const avg = total / data.ratings.length;
+    summary.innerHTML = '本题均分: <strong>' + avg.toFixed(1) + ' / 5</strong>（' + data.ratings.length + '个评分点，已评' + rated + '个）';
+    summary.style.display = 'block';
+}
+
+async function saveEvaluation(qkey) {
+    const data = getEvalData(qkey);
+    try {
+        await fetch('/candidates/' + candidateId + '/evaluations', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                question_key: qkey,
+                ratings: data.ratings,
+                skipped: data.skipped
+            })
+        });
+    } catch(e) { console.error('评估保存失败:', e); }
+}
+
+// Init evalCache from server-rendered state
+(function initEvalCache() {
+    document.querySelectorAll('.evaluation-area').forEach(area => {
+        const qkey = area.id.replace('eval-area-', '');
+        const skipCb = area.querySelector('.skip-checkbox');
+        const ratings = [];
+        const seenNames = new Set();
+        area.querySelectorAll('input[type="radio"]:checked').forEach(inp => {
+            if (!seenNames.has(inp.name)) {
+                seenNames.add(inp.name);
+                ratings.push(parseInt(inp.value));
+            }
+        });
+        evalCache[qkey] = {
+            ratings: ratings,
+            skipped: skipCb ? skipCb.checked : false
+        };
+    });
+})();
+
+// Auto-save answer text on blur
+document.querySelectorAll('.answer-textarea').forEach(ta => {
+    ta.addEventListener('blur', async function() {
+        const key = this.dataset.qkey;
+        const val = this.value.trim();
+        if (!val) return;
+        try {
+            await fetch('/candidates/' + candidateId + '/answers', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({answers: {[key]: val}})
+            });
+        } catch(e) {}
+    });
+});
+
+// ---- Replace question ----
+async function replaceQuestion(category, index) {
+    const card = document.getElementById(`qcard-${category}_${index}`);
+    card.style.opacity = '0.5';
+    try {
+        const res = await fetch(`/candidates/${candidateId}/replace-question`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({category, question_index: index})
+        });
+        if (!res.ok) { alert('换题失败'); card.style.opacity = '1'; return; }
+        // Reload to show new question
+        location.reload();
+    } catch(e) { alert('换题失败: ' + e.message); card.style.opacity = '1'; }
+}
+
+// ---- Regenerate from State C (questions already exist) ----
+
+async function regenerateQuestionsKeepFocus() {
+    if (!confirm('确定重新出题吗？当前评分和点评将被清除。')) return;
+
+    const btn = document.getElementById('btn-regenerate-questions');
+    const origHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> 出题中...';
+
+    // Clear questions immediately
+    document.querySelectorAll('.question-section').forEach(s => s.style.display = 'none');
+    // Hide summary card
+    const summaryCard = document.querySelector('.final-card');
+    if (summaryCard) summaryCard.style.display = 'none';
+    // Show loading
+    const loadingEl = document.getElementById('questions-loading');
+    if (loadingEl) loadingEl.style.display = 'flex';
+
+    try {
+        const focusItems = [];
+        document.querySelectorAll('.interview-focus li').forEach(el => {
+            const text = el.textContent.trim();
+            if (text) focusItems.push(text);
+        });
+        const res = await fetch('/candidates/' + candidateId + '/generate-questions', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({interview_focus: focusItems.length > 0 ? focusItems : undefined})
+        });
+        if (res.ok) {
+            location.reload();
+        } else {
+            const err = await res.json();
+            alert('生成失败: ' + (err.detail || '未知错误'));
+        }
+    } catch(e) {
+        alert('生成失败: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = origHTML;
+        if (loadingEl) loadingEl.style.display = 'none';
+    }
+}
+
+async function regenerateFocusFromQuestions() {
+    if (!confirm('确定重定重点吗？当前题目和评分将被清除，返回编辑模式。')) return;
+
+    const btn = document.getElementById('btn-regenerate-focus');
+    const origHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> 生成中...';
+
+    // Clear questions immediately
+    document.querySelectorAll('.question-section').forEach(s => s.style.display = 'none');
+    // Hide summary card
+    const summaryCard = document.querySelector('.final-card');
+    if (summaryCard) summaryCard.style.display = 'none';
+    // Show loading
+    const loadingEl = document.getElementById('questions-loading');
+    if (loadingEl) loadingEl.style.display = 'flex';
+
+    try {
+        const res = await fetch('/candidates/' + candidateId + '/generate-focus', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({current_focus: []})
+        });
+        if (res.ok) {
+            location.reload();
+        } else {
+            const err = await res.json();
+            alert('生成失败: ' + (err.detail || '未知错误'));
+        }
+    } catch(e) {
+        alert('生成失败: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = origHTML;
+        if (loadingEl) loadingEl.style.display = 'none';
+    }
+}
+
+// ---- Final summary ----
+async function generateFinalSummary() {
+    // Client-side check: at least one evaluation point must be rated
+    let hasAnyEval = false;
+    for (const key of Object.keys(evalCache)) {
+        const data = evalCache[key];
+        if (data && !data.skipped && data.ratings && data.ratings.some(r => r > 0)) {
+            hasAnyEval = true;
+            break;
+        }
+    }
+    // Also check DOM for ratings not yet in cache
+    if (!hasAnyEval) {
+        document.querySelectorAll('.evaluation-area input[type="radio"]:checked').forEach(inp => {
+            hasAnyEval = true;
+        });
+    }
+    if (!hasAnyEval) {
+        alert('请先完成至少一道题的逐点评分后再生成面试总结');
+        return;
+    }
+
+    document.getElementById('btn-summary').disabled = true;
+    document.getElementById('summary-loading').style.display = 'block';
+    document.getElementById('summary-result').innerHTML = '';
+    try {
+        const res = await fetch('/candidates/' + candidateId + '/final-summary', {method: 'POST'});
+        if (!res.ok) { alert('生成失败'); return; }
+        location.reload();
+    } catch(e) { alert('生成失败: ' + e.message); }
+    finally {
+        document.getElementById('btn-summary').disabled = false;
+        document.getElementById('summary-loading').style.display = 'none';
+    }
+}
+
+// ---- Edit name ----
+function editName() {
+    const h1 = document.getElementById('candidate-name');
+    const currentName = h1.textContent.trim();
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = currentName;
+    input.className = 'name-edit-input';
+    input.style.cssText = 'font-size:24px;font-weight:700;border:2px solid var(--primary);border-radius:6px;padding:4px 10px;width:200px;';
+
+    async function save() {
+        const newName = input.value.trim();
+        if (!newName || newName === currentName) {
+            h1.textContent = currentName;
+            h1.style.display = '';
+            input.remove();
+            return;
+        }
+        try {
+            const res = await fetch(`/candidates/update-name/{{ candidate.id }}`, {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({name: newName})
+            });
+            if (res.ok) {
+                h1.textContent = newName;
+                document.title = newName + ' - 详细报告';
+            } else {
+                h1.textContent = currentName;
+            }
+        } catch(e) {
+            h1.textContent = currentName;
+        }
+        h1.style.display = '';
+        input.remove();
+    }
+
+    h1.style.display = 'none';
+    h1.parentNode.insertBefore(input, h1.nextSibling);
+    input.focus();
+    input.select();
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { input.blur(); }
+        if (e.key === 'Escape') {
+            input.value = currentName;
+            input.blur();
+        }
+    });
+}
+
+// ---- Step 1: Generate interview focus ----
+async function generateFocus() {
+    const btn = document.getElementById('btn-generate-focus');
+    btn.disabled = true;
+    document.getElementById('generate-loading').style.display = 'flex';
+    try {
+        const res = await fetch(`/candidates/${candidateId}/generate-focus`, {method: 'POST'});
+        if (res.ok) {
+            location.reload();
+        } else {
+            const err = await res.json();
+            alert('生成失败: ' + (err.detail || '未知错误'));
+        }
+    } catch(e) { alert('生成失败: ' + e.message); }
+    finally {
+        btn.disabled = false;
+        document.getElementById('generate-loading').style.display = 'none';
+    }
+}
+
+// ---- Step 2: Confirm focus and generate questions ----
+async function confirmFocusAndGenerate() {
+    // Collect focus items from the displayed list (or from the textarea if in edit mode)
+    const editArea = document.getElementById('focus-edit-area');
+    let focusItems = [];
+    if (editArea.style.display !== 'none') {
+        // Read from textarea
+        focusItems = document.getElementById('focus-textarea').value
+            .split('\n')
+            .map(s => s.trim())
+            .filter(s => s.length > 0);
+    } else {
+        // Read from the list items
+        document.querySelectorAll('#focus-list .focus-text').forEach(el => {
+            const text = el.textContent.trim();
+            if (text) focusItems.push(text);
+        });
+    }
+
+    if (focusItems.length === 0) {
+        alert('请至少填写一条面试重点');
+        return;
+    }
+
+    const btnConfirm = document.getElementById('btn-confirm-focus');
+    const btnRegen = document.getElementById('btn-regenerate-focus');
+    const origHTML = btnConfirm.innerHTML;
+    btnConfirm.disabled = true;
+    btnRegen.disabled = true;
+    btnConfirm.innerHTML = '<span class="spinner"></span> 生成中...';
+    // Hide summary card during generation
+    const summaryCard = document.querySelector('.final-card');
+    if (summaryCard) summaryCard.style.display = 'none';
+    document.getElementById('questions-loading').style.display = 'flex';
+    try {
+        const res = await fetch('/candidates/' + candidateId + '/generate-questions', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({interview_focus: focusItems})
+        });
+        if (res.ok) {
+            location.reload();
+        } else {
+            const err = await res.json();
+            alert('生成失败: ' + (err.detail || '未知错误'));
+        }
+    } catch(e) { alert('生成失败: ' + e.message); }
+    finally {
+        btnConfirm.disabled = false;
+        btnRegen.disabled = false;
+        btnConfirm.innerHTML = origHTML;
+        document.getElementById('questions-loading').style.display = 'none';
+    }
+}
+
+// ---- Regenerate focus ----
+async function regenerateFocus() {
+    const btnConfirm = document.getElementById('btn-confirm-focus');
+    const btnRegen = document.getElementById('btn-regenerate-focus');
+    const origHTML = btnRegen.innerHTML;
+    btnConfirm.disabled = true;
+    btnRegen.disabled = true;
+    btnRegen.innerHTML = '<span class="spinner"></span> 生成中...';
+    document.getElementById('focus-loading').style.display = 'flex';
+    document.getElementById('focus-loading-text').textContent = '正在重定面试重点，预计需要 10-15 秒...';
+
+    // Collect current focus items from DOM (after user edits/deletions)
+    const editArea = document.getElementById('focus-edit-area');
+    let currentFocus = [];
+    if (editArea.style.display !== 'none') {
+        currentFocus = document.getElementById('focus-textarea').value
+            .split('\n')
+            .map(s => s.trim())
+            .filter(s => s.length > 0);
+    } else {
+        document.querySelectorAll('#focus-list .focus-text').forEach(el => {
+            const text = el.textContent.trim();
+            if (text) currentFocus.push(text);
+        });
+    }
+
+    try {
+        const res = await fetch(`/candidates/${candidateId}/generate-focus`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({current_focus: currentFocus})
+        });
+        if (res.ok) {
+            location.reload();
+        } else {
+            const err = await res.json();
+            alert('生成失败: ' + (err.detail || '未知错误'));
+        }
+    } catch(e) { alert('生成失败: ' + e.message); }
+    finally {
+        btnConfirm.disabled = false;
+        btnRegen.disabled = false;
+        btnRegen.innerHTML = origHTML;
+        document.getElementById('focus-loading').style.display = 'none';
+    }
+}
+
+// ---- Edit a single focus item inline ----
+function editFocusItem(btn) {
+    const li = btn.closest('.focus-item');
+    const span = li.querySelector('.focus-text');
+    const currentText = span.textContent;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = currentText;
+    input.className = 'focus-edit-input';
+    span.replaceWith(input);
+    input.focus();
+    input.select();
+
+    function save() {
+        const newText = input.value.trim() || currentText;
+        const newSpan = document.createElement('span');
+        newSpan.className = 'focus-text';
+        newSpan.textContent = newText;
+        input.replaceWith(newSpan);
+    }
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { input.blur(); }
+        if (e.key === 'Escape') {
+            input.value = currentText;
+            input.blur();
+        }
+    });
+}
+
+// ---- Delete a focus item ----
+function deleteFocusItem(btn) {
+    const li = btn.closest('.focus-item');
+    li.remove();
+    // If no items left, add one empty item
+    if (document.querySelectorAll('#focus-list .focus-item').length === 0) {
+        addFocusItem();
+    }
+}
+
+// ---- Add a new focus item ----
+function addFocusItem() {
+    const ul = document.getElementById('focus-list');
+    const li = document.createElement('li');
+    li.className = 'focus-item';
+    li.innerHTML = `
+        <span class="focus-text"></span>
+        <button class="focus-btn focus-btn-edit" onclick="editFocusItem(this)" title="编辑">✎</button>
+        <button class="focus-btn focus-btn-del" onclick="deleteFocusItem(this)" title="删除">✕</button>
+    `;
+    ul.appendChild(li);
+    // Auto-trigger edit on the new item
+    setTimeout(() => {
+        const btn = li.querySelector('.focus-btn-edit');
+        if (btn) btn.click();
+    }, 100);
+}
+
+// ---- Generate interview questions (direct, skip focus step) ----
+async function generateQuestions() {
+    const btn = document.getElementById('btn-generate-questions');
+    btn.disabled = true;
+    document.getElementById('generate-loading').style.display = 'flex';
+    document.getElementById('generate-loading').querySelector('span').textContent = ' 正在生成个性化面试问题，预计需要 10-15 秒...';
+    try {
+        const res = await fetch(`/candidates/${candidateId}/generate-questions`, {method: 'POST'});
+        if (res.ok) {
+            location.reload();
+        } else {
+            const err = await res.json();
+            alert('生成失败: ' + (err.detail || '未知错误'));
+        }
+    } catch(e) { alert('生成失败: ' + e.message); }
+    finally {
+        btn.disabled = false;
+        document.getElementById('generate-loading').style.display = 'none';
+    }
+}
+
+// ---- Reanalyze single candidate ----
+async function reanalyzeOne(e) {
+    if (e) { e.stopPropagation(); e.preventDefault(); }
+    if (!confirm('确定要重新分析此简历吗？将覆盖之前的分析结果。')) return;
+    const btn = document.getElementById('btn-reanalyze');
+    btn.disabled = true;
+    btn.textContent = '提交中...';
+    try {
+        const res = await fetch(`/candidates/{{ candidate.id }}/reanalyze`, { method: 'POST' });
+        if (res.ok) {
+            location.reload();
+        } else {
+            const err = await res.json();
+            alert('失败: ' + (err.detail || '未知错误'));
+            btn.disabled = false;
+            btn.textContent = '重新分析此简历';
+        }
+    } catch(e) {
+        alert('失败: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = '重新分析此简历';
+    }
+}
+
+// Auto-refresh when processing
+{% if candidate.status == "processing" %}
+(function() {
+    let count = 0;
+    const interval = setInterval(() => {
+        fetch('/detail/{{ candidate.id }}?_r=' + Date.now(), {headers: {'Accept':'text/html'}})
+            .then(r => r.text())
+            .then(html => {
+                if (!html.includes('正在重新分析中')) {
+                    location.reload();
+                }
+            });
+        count++;
+        if (count > 60) clearInterval(interval);
+    }, 3000);
+})();
+{% endif %}
+</script>
+{% endblock %}

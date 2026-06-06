@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+{% block title %}匹配结果 - {{ job.title }}{% endblock %}
+
+{% block content %}
+<div class="page-container">
+    <div class="results-header">
+        <div>
+            <h1>匹配结果</h1>
+        </div>
+        <div class="results-header-actions">
+            <a href="/?job_id={{ job.id }}" class="btn btn-outline">继续添加简历</a>
+            {% if passed|length >= 2 %}
+            <a href="/compare/{{ job.id }}" class="btn btn-primary" id="btn-compare-header">
+                <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/>
+                    <circle cx="7" cy="7" r="2"/><circle cx="17" cy="17" r="2"/>
+                    <line x1="9" y1="9" x2="12" y2="12"/><line x1="12" y1="12" x2="15" y2="15"/>
+                    <circle cx="17" cy="7" r="1.5"/><circle cx="7" cy="17" r="1.5"/>
+                </svg>
+                综合对比 ({{ passed|length }} 人)
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- JD view + reanalyze -->
+    <div class="card jd-edit-card">
+        <details class="jd-edit-details">
+            <summary class="jd-edit-summary">
+                招聘描述 · <span id="jd-summary-title">{{ job.title }}</span>
+                <span class="jd-summary-threshold">分数线 {{ job.threshold }}</span>
+            </summary>
+            <div class="jd-view-body">
+                <!-- Read-only view -->
+                <div id="jd-readonly-view">
+                    <div id="jd-display-desc" class="jd-display-desc">{{ jd_html | safe }}</div>
+                </div>
+                <!-- Edit view (hidden by default) -->
+                <div id="jd-edit-view" style="display:none">
+                    <div class="form-group">
+                        <label for="edit-jd-title">职位名称</label>
+                        <input type="text" id="edit-jd-title" value="{{ job.title }}" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-jd-desc">职位描述 (JD)</label>
+                        <textarea id="edit-jd-desc" rows="8" class="form-textarea">{{ job.description }}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>通过分数线: <strong id="edit-threshold-val">{{ job.threshold }}</strong> 分</label>
+                        <input type="range" id="edit-jd-threshold" min="40" max="85" value="{{ job.threshold }}"
+                               oninput="document.getElementById('edit-threshold-val').textContent = this.value">
+                    </div>
+                    <div class="jd-edit-actions">
+                        <button class="btn btn-outline btn-sm" onclick="cancelEdit()">取消</button>
+                        <button class="btn btn-primary btn-sm" onclick="saveJD()">保存</button>
+                    </div>
+                    <div id="jd-save-status" class="jd-save-status" style="display:none"></div>
+                </div>
+            </div>
+            <!-- Reanalyze button centered -->
+            <div class="jd-reanalyze-row">
+                <button class="btn btn-primary btn-sm" id="btn-reanalyze-all" onclick="reanalyzeAll()">
+                    <svg class="btn-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                    重新分析全部 ({{ total }} 份)
+                </button>
+            </div>
+        </details>
+    </div>
+
+    <!-- Stats bar with active filter -->
+    <div class="stats-bar" id="stats-bar">
+        <div class="stat-item{% if active_filter == 'all' %} active{% endif %}" data-filter="all" onclick="applyFilter('all')">
+            <span class="stat-number">{{ total }}</span>
+            <span class="stat-label">全部</span>
+        </div>
+        <div class="stat-item stat-passed{% if active_filter == 'passed' %} active{% endif %}" data-filter="passed" onclick="applyFilter('passed')">
+            <span class="stat-number">{{ passed|length }}</span>
+            <span class="stat-label">通过</span>
+        </div>
+        <div class="stat-item stat-rejected{% if active_filter == 'rejected' %} active{% endif %}" data-filter="rejected" onclick="applyFilter('rejected')">
+            <span class="stat-number">{{ rejected|length }}</span>
+            <span class="stat-label">未通过</span>
+        </div>
+        <div class="stat-item stat-pending{% if active_filter == 'pending' %} active{% endif %}" data-filter="pending" onclick="applyFilter('pending')">
+            <span class="stat-number">{{ pending|length }}</span>
+            <span class="stat-label">处理中</span>
+        </div>
+        <div class="stat-item stat-failed{% if active_filter == 'failed' %} active{% endif %}" data-filter="failed" onclick="applyFilter('failed')">
+            <span class="stat-number">{{ failed|length }}</span>
+            <span class="stat-label">解析失败</span>
+        </div>
+    </div>
+
+    <!-- Pending -->
+    {% if pending %}
+    <div class="section section-filter pending-section">
+        <h2 class="section-title">处理中 ({{ pending|length }})</h2>
+        <div class="candidate-grid">
+            {% for c in pending %}
+            <div class="candidate-card card pending-card" id="card-{{ c.id }}">
+                <button class="card-reject-btn" title="删除此候选人" onclick="deleteCandidate({{ c.id }}, event)">&times;</button>
+                <div class="card-status">
+                    <span class="spinner"></span>
+                    {{ "处理中..." if c.status == "processing" else "等待处理" }}
+                </div>
+                <h3>{{ c.filename }}</h3>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Passed -->
+    {% if passed %}
+    <div class="section section-filter passed-section">
+        <h2 class="section-title section-passed">通过筛选 ({{ passed|length }})</h2>
+        <div class="candidate-grid">
+            {% for c in passed %}
+            <div class="candidate-card card passed-card {% if c.marked_for_interview %}marked-interview{% endif %}" id="card-{{ c.id }}">
+                <button class="card-reject-btn" title="转为未通过" onclick="toggleReject({{ c.id }}, event, '{{ c.name }}')">&times;</button>
+                <a href="/detail/{{ c.id }}" class="card-link-full">
+                    <div class="card-score score-high">{{ c.overall_score }}</div>
+                    <h3>{{ c.name }}</h3>
+                    <p class="card-filename">{{ c.filename }}</p>
+                    {% if c.match_result %}
+                    <p class="card-summary">{{ c.match_result.get('summary', '')[:80] }}...</p>
+                    {% endif %}
+                    <div class="card-badges">
+                        {% if c.marked_for_interview %}
+                        <span class="badge-interview">&#128204; 待面试</span>
+                        {% endif %}
+                        {% if c.interview_result %}
+                        <span class="badge-questions">&#x2705; 已出题</span>
+                        {% endif %}
+                    </div>
+                    <span class="card-arrow">&rarr;</span>
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Rejected -->
+    {% if rejected %}
+    <div class="section section-filter rejected-section">
+        <h2 class="section-title section-rejected">未通过筛选 ({{ rejected|length }})</h2>
+        <div class="candidate-grid">
+            {% for c in rejected %}
+            <div class="candidate-card card rejected-card" id="card-{{ c.id }}">
+                <button class="card-reject-btn" title="永久删除" onclick="deleteCandidate({{ c.id }}, event, '{{ c.name }}')">&times;</button>
+                <a href="/detail/{{ c.id }}" class="card-link-full">
+                    <div class="card-score score-low">{{ c.overall_score }}</div>
+                    <h3>{{ c.name }}</h3>
+                    <p class="card-filename">{{ c.filename }}</p>
+                    {% if c.match_result and c.match_result.get('rejection_reasons') %}
+                    <p class="card-reason">{{ c.match_result.rejection_reasons[0][:80] }}...</p>
+                    {% endif %}
+                    <span class="card-arrow">&rarr;</span>
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Failed -->
+    {% if failed %}
+    <div class="section section-filter failed-section">
+        <h2 class="section-title section-failed">解析失败 ({{ failed|length }})</h2>
+        <div class="candidate-grid">
+            {% for c in failed %}
+            <div class="candidate-card card failed-card" id="card-{{ c.id }}">
+                <button class="card-reject-btn" title="永久删除" onclick="deleteCandidate({{ c.id }}, event, '{{ c.filename }}')">&times;</button>
+                <h3>{{ c.filename }}</h3>
+                <p class="error-text">{{ c.error_message }}</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if not pending and not passed and not rejected and not failed %}
+    <div class="empty-state">
+        <p>暂无候选人，请上传简历</p>
+        <a href="/?job_id={{ job.id }}" class="btn btn-primary">上传简历</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const jobId = {{ job.id }};
+let currentFilter = 'all';
+
+function applyFilter(filter) {
+    currentFilter = filter;
+    // Update stat active states
+    document.querySelectorAll('.stat-item').forEach(el => el.classList.remove('active'));
+    const activeStat = document.querySelector(`.stat-item[data-filter="${filter}"]`);
+    if (activeStat) activeStat.classList.add('active');
+
+    // Show/hide sections
+    const sections = document.querySelectorAll('.section-filter');
+    if (filter === 'all') {
+        sections.forEach(s => s.style.display = '');
+    } else {
+        sections.forEach(s => {
+            if (s.classList.contains(filter + '-section')) {
+                s.style.display = '';
+            } else {
+                s.style.display = 'none';
+            }
+        });
+    }
+
+    // Show/hide header compare button (only for passed/all filter)
+    const btnCompare = document.getElementById('btn-compare-header');
+    if (btnCompare) {
+        btnCompare.style.display = (filter === 'passed' || filter === 'all') ? '' : 'none';
+    }
+
+    // Update URL without reload
+    const url = new URL(window.location);
+    if (filter === 'all') {
+        url.searchParams.delete('filter');
+    } else {
+        url.searchParams.set('filter', filter);
+    }
+    window.history.replaceState({}, '', url);
+}
+
+// Initialize filter from URL param
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    const filter = params.get('filter');
+    if (filter && ['all','passed','rejected','pending','failed'].includes(filter)) {
+        applyFilter(filter);
+    } else {
+        // Default: show all
+        applyFilter('all');
+    }
+})();
+
+async function toggleReject(candidateId, event, name) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!confirm(`确定要将「${name}」转为未通过吗？\n\n不会删除数据，可重新分析恢复。`)) return;
+    try {
+        const res = await fetch(`/candidates/${candidateId}/reject`, { method: 'POST' });
+        if (res.ok) {
+            location.reload();
+        } else {
+            const err = await res.json();
+            alert('操作失败: ' + (err.detail || '未知错误'));
+        }
+    } catch(e) { alert('操作失败: ' + e.message); }
+}
+
+async function deleteCandidate(candidateId, event, name) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!confirm(`确定要永久删除「${name}」吗？\n\n此操作不可撤销，将会删除原始简历文件及所有分析数据。`)) return;
+    try {
+        const res = await fetch(`/candidates/${candidateId}`, { method: 'DELETE' });
+        if (res.ok) {
+            const card = document.getElementById('card-' + candidateId);
+            if (card) {
+                card.style.opacity = '0';
+                card.style.transform = 'scale(0.95)';
+                card.style.transition = 'opacity 0.3s, transform 0.3s';
+                setTimeout(() => { location.reload(); }, 300);
+            } else {
+                location.reload();
+            }
+        } else {
+            const err = await res.json();
+            alert('删除失败: ' + (err.detail || '未知错误'));
+        }
+    } catch(e) { alert('删除失败: ' + e.message); }
+}
+
+// Double-click to enter edit mode
+document.getElementById('jd-readonly-view').addEventListener('dblclick', function(e) {
+    enterEditMode();
+});
+
+function enterEditMode() {
+    document.getElementById('jd-readonly-view').style.display = 'none';
+    document.getElementById('jd-edit-view').style.display = 'block';
+    document.getElementById('edit-jd-title').value = document.getElementById('jd-summary-title').textContent.trim();
+    document.getElementById('edit-jd-desc').value = document.getElementById('jd-display-desc').textContent.trim();
+    document.getElementById('edit-jd-threshold').value = {{ job.threshold }};
+    document.getElementById('edit-threshold-val').textContent = {{ job.threshold }};
+}
+
+function cancelEdit() {
+    document.getElementById('jd-readonly-view').style.display = 'block';
+    document.getElementById('jd-edit-view').style.display = 'none';
+    document.getElementById('jd-save-status').style.display = 'none';
+}
+
+async function saveJD() {
+    const title = document.getElementById('edit-jd-title').value.trim();
+    const description = document.getElementById('edit-jd-desc').value.trim();
+    const threshold = parseInt(document.getElementById('edit-jd-threshold').value);
+    if (!title || !description) { alert('请填写职位名称和描述'); return; }
+    const status = document.getElementById('jd-save-status');
+    try {
+        const res = await fetch('/jobs/' + jobId, {
+            method: 'PUT', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({title, description, threshold})
+        });
+        if (res.ok) {
+            document.getElementById('jd-summary-title').textContent = title;
+            document.title = '匹配结果 - ' + title;
+            document.getElementById('jd-readonly-view').style.display = 'block';
+            document.getElementById('jd-edit-view').style.display = 'none';
+            status.style.display = 'block';
+            status.textContent = '已保存，刷新中...';
+            status.className = 'jd-save-status jd-status-ok';
+            setTimeout(() => { location.reload(); }, 800);
+        } else {
+            const err = await res.json();
+            alert('保存失败: ' + (err.detail || '未知错误'));
+        }
+    } catch(e) { alert('保存失败: ' + e.message); }
+}
+
+async function reanalyzeAll() {
+    if (!confirm('确定要重新分析所有 {{ total }} 份简历吗？这将覆盖之前的分析结果。')) return;
+    const btn = document.getElementById('btn-reanalyze-all');
+    btn.disabled = true;
+    btn.textContent = '分析中...';
+    try {
+        const res = await fetch('/jobs/' + jobId + '/reanalyze-all', { method: 'POST' });
+        if (res.ok) {
+            location.reload();
+        } else {
+            const err = await res.json();
+            alert('失败: ' + (err.detail || '未知错误'));
+        }
+    } catch(e) { alert('失败: ' + e.message); }
+    finally { btn.disabled = false; btn.textContent = '重新分析全部 ({{ total }} 份)'; }
+}
+
+// Auto-refresh if there are pending candidates
+{% if pending %}
+(function() {
+    const check = () => {
+        fetch('/results/{{ job.id }}?_r=' + Date.now(), {headers: {'Accept':'text/html'}})
+            .then(r => r.text())
+            .then(html => {
+                if (!html.includes('处理中')) {
+                    location.reload();
+                }
+            });
+    };
+    let count = 0;
+    const interval = setInterval(() => {
+        check();
+        count++;
+        if (count > 60) clearInterval(interval);
+    }, 5000);
+})();
+{% endif %}
+</script>
+{% endblock %}

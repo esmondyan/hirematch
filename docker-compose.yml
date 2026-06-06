@@ -1,0 +1,14 @@
+# Development setup — single container, direct port exposure
+# For production, use: docker compose -f docker-compose.prod.yml up -d
+
+services:
+  hirematch:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./hirematch.db:/app/hirematch.db
+    env_file:
+      - .env
+    restart: unless-stopped

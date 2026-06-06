@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.env
+*.db
+uploads/*
+!uploads/.gitkeep
+.venv/
+venv/
+dist/
+*.egg-info/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.tar.gz
+docker-compose.override.yml

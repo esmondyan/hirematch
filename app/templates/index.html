@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}HireMatch - 新建匹配{% endblock %}
+
+{% block content %}
+<div class="page-container">
+    <div class="hero">
+        <h1>智能面试初筛</h1>
+        <p>输入职位描述，批量上传候选人简历，AI 自动完成匹配分析和面试问题设计</p>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+
+    <div class="two-column">
+        <!-- JD Form -->
+        <div class="card">
+            <div class="card-header">
+                <h2>职位描述</h2>
+            </div>
+            <form id="jd-form" action="/jobs/create" method="POST">
+                <div class="form-group">
+                    <label for="title">职位名称 <span class="required">*</span></label>
+                    <input type="text" id="title" name="title" required
+                           placeholder="例如：高级 Python 后端工程师"
+                           value="{{ job.title if job else '' }}">
+                </div>
+                <div class="form-group">
+                    <label for="description">职位描述 (JD) <span class="required">*</span></label>
+                    <textarea id="description" name="description" required
+                              placeholder="请粘贴完整的职位描述，包括：岗位职责、任职要求、技术栈、经验要求等..."
+                              rows="12">{{ job.description if job else '' }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label for="threshold">
+                        匹配通过分数线: <strong id="threshold-value">60</strong> 分
+                    </label>
+                    <input type="range" id="threshold" name="threshold"
+                           min="40" max="85" value="{{ job.threshold if job else 60 }}"
+                           oninput="document.getElementById('threshold-value').textContent = this.value">
+                    <div class="range-labels">
+                        <span>宽松 (40)</span>
+                        <span>标准 (60)</span>
+                        <span>严格 (85)</span>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary btn-full">
+                    保存 JD 并进入上传简历
+                </button>
+            </form>
+        </div>
+
+        <!-- Upload Area -->
+        <div class="card">
+            <div class="card-header">
+                <h2>上传简历</h2>
+                {% if job %}
+                <span class="badge">JD: {{ job.title }}</span>
+                {% endif %}
+            </div>
+            {% if job %}
+            <form id="upload-form" action="/candidates/upload" method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="job_id" value="{{ job.id }}">
+                <div class="upload-zone" id="upload-zone">
+                    <div class="upload-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                    </div>
+                    <p class="upload-text">拖拽简历文件到此处，或点击选择</p>
+                    <p class="upload-hint">支持 PDF / DOCX / TXT 格式，单文件不超过 5MB</p>
+                    <input type="file" id="file-input" name="files" multiple
+                           accept=".pdf,.docx,.txt" style="display:none">
+                </div>
+                <div id="file-list" class="file-list"></div>
+                <button type="submit" class="btn btn-primary btn-full" id="upload-btn" disabled>
+                    开始匹配分析
+                </button>
+            </form>
+            {% else %}
+            <div class="empty-state">
+                <p>请先填写并保存左侧的职位描述</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if previous_jobs %}
+    <div class="history-section">
+        <h2>历史记录</h2>
+        <div class="history-grid">
+            {% for pj in previous_jobs %}
+            <div class="history-card">
+                <a href="/results/{{ pj.id }}" class="history-card-main">
+                    <div class="history-card-header">
+                        <h3>{{ pj.title }}</h3>
+                        <span class="card-arrow">&rarr;</span>
+                    </div>
+                    <div class="history-card-meta">
+                        <span>{{ pj.total }} 份简历</span>
+                        {% if pj.total > 0 %}
+                        <span class="history-passed">{{ pj.passed }} 通过</span>
+                        {% endif %}
+                    </div>
+                    <div class="history-card-date">{{ pj.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                </a>
+                <button class="btn-delete-history" onclick="deleteJob({{ pj.id }}, '{{ pj.title }}')" title="删除此记录">&times;</button>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/app.js"></script>
+<script>
+async function deleteJob(jobId, title) {
+    if (!confirm('确定要删除「' + title + '」及其所有候选人数据吗？此操作不可恢复。')) return;
+    try {
+        const res = await fetch('/jobs/' + jobId, { method: 'DELETE' });
+        if (res.ok) {
+            location.reload();
+        } else {
+            const err = await res.json();
+            alert('删除失败: ' + (err.detail || '未知错误'));
+        }
+    } catch(e) { alert('删除失败: ' + e.message); }
+}
+</script>
+{% endblock %}

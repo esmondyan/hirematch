@@ -1,0 +1,34 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+
+# Environment
+.env
+.env.local
+
+# Database
+*.db
+
+# Uploads (mounted as volume)
+uploads/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs
+*.md
+!ARCHITECTURE.md
+!DEPLOY.md

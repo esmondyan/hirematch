@@ -14,3 +14,4 @@ dist/
 Thumbs.db
 *.tar.gz
 docker-compose.override.yml
+.claude/

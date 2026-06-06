@@ -5,7 +5,7 @@ services:
   hirematch:
     build: .
     ports:
-      - "8000:8000"
+      - "53500:53500"
     volumes:
       - ./uploads:/app/uploads
       - ./hirematch.db:/app/hirematch.db

@@ -9,7 +9,7 @@
 ## 架构概述
 
 ```
-用户浏览器 → Nginx (:80) → FastAPI (:8000) → SQLite
+用户浏览器 → Nginx (:80) → FastAPI (:53500) → SQLite
                                 ↓
                          DeepSeek API (LLM)
 ```
@@ -126,7 +126,7 @@ bash deploy.sh <服务器IP> root
 1. 控制台 → 安全组 → 配置规则
 2. 入方向添加：TCP 80、TCP 443、TCP 22
 
-> **重要**：不要开放 8000 端口。Nginx 在 80 端口对外服务，应用运行在内网。
+> **重要**：不要开放 53500 端口。Nginx 在 80 端口对外服务，应用运行在内网。
 
 ---
 
@@ -214,7 +214,7 @@ docker compose -f docker-compose.prod.yml restart
 
 ## 安全建议
 
-1. **安全组**：仅开放 80、443、22 端口，不暴露 8000
+1. **安全组**：仅开放 80、443、22 端口，不暴露 53500
 2. **API Key**：使用独立的 API Key，不要与其他项目共用
 3. **HTTPS**：生产环境务必启用，Let's Encrypt 免费且自动续期
 4. **系统更新**：`apt update && apt upgrade -y` 定期执行

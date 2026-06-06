@@ -23,7 +23,7 @@ services:
   hirematch:
     build: .
     expose:
-      - "8000"
+      - "53500"
     volumes:
       - ./uploads:/app/uploads
       - ./hirematch.db:/app/hirematch.db
@@ -34,7 +34,7 @@ services:
       - hirematch-net
     # Health check
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:53500/')"]
       interval: 30s
       timeout: 5s
       retries: 3
